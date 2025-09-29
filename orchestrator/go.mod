@@ -1,8 +1,8 @@
-module vertex-ai
+module orchestrator
 
-go 1.24.4
+go 1.24.5
 
-require google.golang.org/genai v1.25.0
+require google.golang.org/genai v1.26.0
 
 require (
 	cloud.google.com/go v0.116.0 // indirect
