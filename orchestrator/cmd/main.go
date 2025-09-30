@@ -29,7 +29,7 @@ func main() {
 			Properties: map[string]*genai.Schema{
 				"location": {
 					Type:        genai.TypeString,
-					Description: "The city and state, e.g., San Francisco, CA",
+					Description: "Any city in the United States, i.e. New_York_City",
 				},
 			},
 			Required: []string{"location"},
@@ -44,13 +44,18 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	tools := &genai.Tool{FunctionDeclarations: []*genai.FunctionDeclaration{getWeatherFunc}}
+	config := &genai.GenerateContentConfig{Tools: []*genai.Tool{tools}}
+
+	// Define user prompt
+	contents := []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Tell me weather in New York City."}}}}
 
 	// Send request with function declarations
 	resp, err := client.Models.GenerateContent(
 		ctx,
 		"gemini-2.5-pro",
-		genai.Text("Tell me weather in London"),
-		&genai.GenerateContentConfig{Tools: []*genai.Tool{{FunctionDeclarations: []*genai.FunctionDeclaration{getWeatherFunc}}}},
+		contents,
+		config,
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -66,71 +71,28 @@ func main() {
 			log.Println(err)
 		}
 		fmt.Printf("Result: %s\n", string(result))
+
+		// Create a function response part
+		part := genai.NewPartFromFunctionResponse(fCall.Name, map[string]any{"result": result})
+
+		// Append function call and result of the function execution to contents
+		contents = append(contents, resp.Candidates[0].Content)
+		contents = append(contents, &genai.Content{Role: "user", Parts: []*genai.Part{part}})
+
+		finalResp, err := client.Models.GenerateContent(
+			ctx,
+			"gemini-2.5-flash",
+			contents,
+			config,
+		)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(finalResp.Text())
 	} else {
 		fmt.Println("No function call found in the response.")
 		fmt.Println(resp.Text())
 	}
-
-	//// Add the function declaration to the model's toolset
-	//client.Tools = []*genai.Tool{
-	//	{FunctionDeclarations: []*genai.FunctionDeclaration{getWeatherFunc}},
-	//}
-
-	// 2. --- START THE CONVERSATION ---
-	//prompt := "What is the current weather like in Tokyo?"
-	//log.Printf("User Prompt: %s\n", prompt)
-	//
-	//// Send the prompt to the model
-	//resp, err := client.GenerateContent(ctx, genai.Text(prompt))
-	//if err != nil {
-	//	log.Fatalf("Error generating content: %v", err)
-	//}
-
-	// 3. --- CHECK IF THE MODEL WANTS TO CALL A TOOL ---
-	//part := resp.Candidates[0].Content.Parts[0]
-	//if fc, ok := part.(genai.FunctionCall); ok {
-	//	log.Printf("Model wants to call a function: %s\n", fc.Name)
-	//	log.Printf("Arguments: %v\n", fc.Args)
-	//
-	//	// We only have one tool, but a switch is good for scalability
-	//	switch fc.Name {
-	//	case "getWeather":
-	//		location := fc.Args["location"].(string)
-	//
-	//		// 4. --- EXECUTE THE TOOL (Call our other server) ---
-	//		weatherData, err := callGetWeatherAPI(location)
-	//		if err != nil {
-	//			log.Fatalf("Error calling weather API: %v", err)
-	//		}
-	//		log.Printf("Tool Result: %s\n", string(weatherData))
-	//
-	//		// 5. --- SEND THE TOOL'S RESPONSE BACK TO THE MODEL ---
-	//		// Create a FunctionResponse part with the tool's output
-	//		fr := &genai.FunctionResponse{
-	//			Name:    "getWeather",
-	//			Content: string(weatherData),
-	//		}
-	//
-	//		// Send the response back to the model
-	//		resp, err = client.GenerateContent(ctx, fr)
-	//		if err != nil {
-	//			log.Fatalf("Error generating content after function call: %v", err)
-	//		}
-	//	default:
-	//		log.Fatalf("Unknown function call: %s", fc.Name)
-	//	}
-	//}
-	//
-	//// 6. --- PRINT THE FINAL, NATURAL-LANGUAGE RESPONSE ---
-	//finalResponse := resp.Candidates[0].Content.Parts[0]
-	//if text, ok := finalResponse.(genai.Text); ok {
-	//	fmt.Println("---")
-	//	fmt.Println("Final Answer from Gemini:")
-	//	fmt.Println(text)
-	//	fmt.Println("---")
-	//} else {
-	//	log.Printf("Unexpected final response type: %T\n", finalResponse)
-	//}
 }
 
 // callGetWeatherAPI is our function to call the actual tool server
